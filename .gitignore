@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.env
+runs/
+*.pt
+*.onnx
+*.mp4
+*.avi
