@@ -12,13 +12,13 @@ import cv2
 import numpy as np
 
 from camera import CameraThread, parse_source
-from detector import OnnxDetector, UltralyticsDetector
+from detector import DpuDetector, OnnxDetector, UltralyticsDetector
 from memory import ObjectMemory
 from tracker import ByteTracker
 
 WINDOW = "Spatial Awareness - Stable IDs"
 STAGES = ("pre", "inference", "post", "track", "memory")
-DEFAULT_WEIGHTS = {"ultralytics": "yolo11n.pt", "onnx": "yolov8n.onnx"}
+DEFAULT_WEIGHTS = {"ultralytics": "yolo11n.pt", "onnx": "yolov8n.onnx", "dpu": "yolov8n.xmodel"}
 PANEL_WIDTH = 340
 
 
@@ -108,7 +108,10 @@ def main():
     parser.add_argument("--backend", choices=DEFAULT_WEIGHTS, default="ultralytics")
     parser.add_argument("--weights", default=None,
                         help="model file (default: yolo11n.pt for ultralytics, "
-                             "yolov8n.onnx for onnx)")
+                             "yolov8n.onnx for onnx, yolov8n.xmodel for dpu)")
+    parser.add_argument("--dpu-bitstream", default=None,
+                        help="dpu backend: load this overlay with pynq_dpu; omit if the "
+                             "DPU is already loaded (xmutil loadapp) to use VART directly")
     parser.add_argument("--max-frames", type=int, default=0,
                         help="stop after N processed frames, all cameras (0 = run until 'q')")
     parser.add_argument("--no-display", action="store_true")
@@ -122,6 +125,8 @@ def main():
     weights = args.weights or DEFAULT_WEIGHTS[args.backend]
     if args.backend == "onnx":
         detector = OnnxDetector(weights)
+    elif args.backend == "dpu":
+        detector = DpuDetector(weights, bitstream=args.dpu_bitstream)
     else:
         detector = UltralyticsDetector(weights)
 
