@@ -1,0 +1,8 @@
+# KV260 runtime (Ubuntu 22.04, aarch64, Python 3.10): ONNX backend only.
+# No torch/ultralytics. Export yolov8n.onnx on the laptop and copy it over.
+# Pins are the newest releases with cp310 aarch64 wheels (numpy >= 2.3 and
+# onnxruntime >= 1.24 dropped Python 3.10).
+numpy==2.2.6
+opencv-python-headless==5.0.0.93
+lap==0.5.14
+onnxruntime==1.23.2

@@ -3,6 +3,10 @@
 ByteTrack IDs change when an object is lost for too long or re-detected. We
 keep our own object records and reconnect a new tracker ID to a recently seen
 object of the same label within MAX_DISTANCE pixels and MAX_GAP seconds.
+
+Several cameras can share one memory (one object-ID space). Each camera has its
+own tracker, so tracker IDs, visibility and reconnection are kept per camera:
+pixel positions from different cameras are not comparable.
 """
 
 import math
@@ -15,18 +19,19 @@ class ObjectMemory:
     def __init__(self, max_distance=MAX_DISTANCE, max_gap=MAX_GAP):
         self.max_distance = max_distance
         self.max_gap = max_gap
-        self.objects = {}           # object_id -> {label, position, last_seen, visible}
-        self.tracker_to_object = {}  # tracker id -> object_id
+        self.objects = {}           # object_id -> {label, position, last_seen, visible, camera}
+        self.tracker_to_object = {}  # (camera, tracker id) -> object_id
         self.next_object_id = 1
 
-    def update(self, tracks, now):
-        """Assign a stable object ID to every track and refresh memory.
+    def update(self, tracks, now, camera=0):
+        """Assign a stable object ID to every track from `camera` and refresh memory.
 
-        Returns a list of dicts: track_id, label, box, position, object_id.
+        Returns a list of dicts: track_id, label, box, position, object_id, camera.
         """
-        # Mark objects missing until observed again
+        # Mark this camera's objects missing until observed again
         for obj in self.objects.values():
-            obj["visible"] = False
+            if obj["camera"] == camera:
+                obj["visible"] = False
 
         detections = []
         for t in tracks:
@@ -36,6 +41,7 @@ class ObjectMemory:
                 "label": t.label,
                 "box": t.box,
                 "position": ((x1 + x2) // 2, (y1 + y2) // 2),
+                "camera": camera,
             })
 
         # First, preserve existing tracker mappings
@@ -43,7 +49,7 @@ class ObjectMemory:
         unmatched = []
 
         for det in detections:
-            tid = det["track_id"]
+            tid = (camera, det["track_id"])
             obj_id = self.tracker_to_object.get(tid)
 
             if (obj_id in self.objects
@@ -61,7 +67,7 @@ class ObjectMemory:
             best_distance = self.max_distance + 1
 
             for obj_id, obj in self.objects.items():
-                if obj_id in used_ids:
+                if obj_id in used_ids or obj["camera"] != camera:
                     continue
                 if obj["label"] != det["label"]:
                     continue
@@ -88,7 +94,7 @@ class ObjectMemory:
                 self.next_object_id += 1
                 print(f"NEW OBJECT: #{obj_id}")
 
-            self.tracker_to_object[det["track_id"]] = obj_id
+            self.tracker_to_object[(camera, det["track_id"])] = obj_id
             det["object_id"] = obj_id
             used_ids.add(obj_id)
 
@@ -99,6 +105,7 @@ class ObjectMemory:
                 "position": det["position"],
                 "last_seen": now,
                 "visible": True,
+                "camera": camera,
             }
 
         return detections
