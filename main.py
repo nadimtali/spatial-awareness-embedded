@@ -5,11 +5,40 @@ import time
 
 import cv2
 
-from detector import UltralyticsDetector
+from detector import OnnxDetector, UltralyticsDetector
 from memory import ObjectMemory
 from tracker import ByteTracker
 
 WINDOW = "Spatial Awareness - Stable IDs"
+STAGES = ("pre", "inference", "post", "track", "memory")
+DEFAULT_WEIGHTS = {"ultralytics": "yolo11n.pt", "onnx": "yolov8n.onnx"}
+
+
+class StageTimer:
+    """Accumulates per-stage milliseconds and reports averages plus FPS."""
+
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.totals = dict.fromkeys(STAGES, 0.0)
+        self.frames = 0
+        self.start = time.perf_counter()
+
+    def add(self, ms_by_stage):
+        for stage, ms in ms_by_stage.items():
+            self.totals[stage] += ms
+        self.frames += 1
+
+    def elapsed(self):
+        return time.perf_counter() - self.start
+
+    def summary(self):
+        n = max(self.frames, 1)
+        stages = " ".join(f"{s} {self.totals[s] / n:6.1f}" for s in STAGES)
+        total = sum(self.totals.values()) / n
+        fps = self.frames / max(self.elapsed(), 1e-9)
+        return f"[ms/frame] {stages} | total {total:6.1f} | FPS {fps:5.1f} ({self.frames} frames)"
 
 
 def draw(frame, detections, memory, now):
@@ -56,7 +85,12 @@ def draw(frame, detections, memory, now):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--source", default="0", help="camera index or video path")
-    parser.add_argument("--weights", default="yolo11n.pt")
+    parser.add_argument("--backend", choices=DEFAULT_WEIGHTS, default="ultralytics")
+    parser.add_argument("--weights", default=None,
+                        help="model file (default: yolo11n.pt for ultralytics, "
+                             "yolov8n.onnx for onnx)")
+    parser.add_argument("--report-every", type=float, default=5.0,
+                        help="seconds between timing reports")
     parser.add_argument("--max-frames", type=int, default=0,
                         help="stop after N frames (0 = run until 'q')")
     parser.add_argument("--no-display", action="store_true")
@@ -67,11 +101,16 @@ def main():
     if not cap.isOpened():
         raise SystemExit(f"Could not open source {args.source!r}")
 
-    detector = UltralyticsDetector(args.weights)
+    weights = args.weights or DEFAULT_WEIGHTS[args.backend]
+    if args.backend == "onnx":
+        detector = OnnxDetector(weights)
+    else:
+        detector = UltralyticsDetector(weights)
     tracker = ByteTracker()
     memory = ObjectMemory()
 
     frames = 0
+    window, overall = StageTimer(), StageTimer()
     try:
         while True:
             ok, frame = cap.read()
@@ -80,8 +119,19 @@ def main():
             now = time.monotonic()
 
             dets = detector.detect(frame)
+            t0 = time.perf_counter()
             tracks = tracker.update(dets, frame)
+            t1 = time.perf_counter()
             detections = memory.update(tracks, now)
+            t2 = time.perf_counter()
+
+            ms = {**detector.timings,
+                  "track": (t1 - t0) * 1e3, "memory": (t2 - t1) * 1e3}
+            window.add(ms)
+            overall.add(ms)
+            if window.elapsed() >= args.report_every:
+                print(window.summary(), flush=True)
+                window.reset()
 
             frames += 1
             if args.max_frames and frames >= args.max_frames:
@@ -95,6 +145,8 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
+        if overall.frames:
+            print(f"OVERALL {args.backend} ({weights}): {overall.summary()}")
 
 
 if __name__ == "__main__":

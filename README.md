@@ -12,7 +12,7 @@ camera -> detector.py -> tracker.py -> memory.py -> main.py (OpenCV window)
 
 | Module        | Role |
 |---------------|------|
-| `detector.py` | `Detector` interface: BGR frame -> `Detections` (xyxy boxes, scores, class ids, names). `UltralyticsDetector` is the current backend; a DPU backend will implement the same interface. |
+| `detector.py` | `Detector` interface: BGR frame -> `Detections` (xyxy boxes, scores, class ids, names). `UltralyticsDetector` runs ultralytics; `OnnxDetector` runs an ONNX export through onnxruntime with its own NumPy letterbox, box decoding and NMS (no ultralytics), the template for the DPU backend. |
 | `tracker.py`  | `ByteTracker`: ByteTrack on plain `Detections`, same settings as ultralytics' `bytetrack.yaml`. |
 | `memory.py`   | `ObjectMemory`: maps short-lived tracker IDs to stable object IDs, reconnecting within `MAX_DISTANCE` px and `MAX_GAP` s. |
 | `main.py`     | Wires it together and draws boxes plus the object-memory panel. |
@@ -37,4 +37,16 @@ python main.py --source 1         # another camera
 python main.py --source clip.mp4  # video file
 ```
 
-Other flags: `--weights`, `--max-frames N`, `--no-display`.
+Other flags: `--weights`, `--max-frames N`, `--no-display`, `--report-every SEC`.
+
+### ONNX backend
+
+Export once (needs `pip install onnx onnxslim`), then select the backend:
+
+```bash
+python -c "from ultralytics import YOLO; YOLO('yolov8n.pt').export(format='onnx', imgsz=640, simplify=True, opset=17)"
+python main.py --backend onnx --source clip.mp4   # uses yolov8n.onnx by default
+```
+
+Every 5 s the pipeline prints average ms per stage (pre / inference / post /
+track / memory) and FPS, plus an `OVERALL` line on exit.
