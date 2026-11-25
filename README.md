@@ -13,7 +13,7 @@ camera -> detector.py -> tracker.py -> memory.py -> main.py (OpenCV window)
 | Module        | Role |
 |---------------|------|
 | `detector.py` | `Detector` interface: BGR frame -> `Detections` (xyxy boxes, scores, class ids, names). `UltralyticsDetector` runs ultralytics; `OnnxDetector` runs an ONNX export through onnxruntime with its own NumPy letterbox, box decoding and NMS (no ultralytics), the template for the DPU backend. |
-| `tracker.py`  | `ByteTracker`: ByteTrack on plain `Detections`, same settings as ultralytics' `bytetrack.yaml`. |
+| `tracker.py`  | `ByteTracker`: self-contained ByteTrack (Kalman filter + two-stage IoU matching with `lap`, after the MIT-licensed original), same settings as ultralytics' `bytetrack.yaml`. No ultralytics dependency. |
 | `memory.py`   | `ObjectMemory`: maps short-lived tracker IDs to stable object IDs, reconnecting within `MAX_DISTANCE` px and `MAX_GAP` s. |
 | `main.py`     | Wires it together and draws boxes plus the object-memory panel. |
 
